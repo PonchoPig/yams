@@ -1587,6 +1587,13 @@ mod tests {
         barrier: Arc<Barrier>,
     }
 
+    /// Holds one racer inside its captured project snapshot until a peer that
+    /// captured the same snapshot has finished publishing.
+    struct WaitForPublishedPeer {
+        barrier: Arc<Barrier>,
+        published: mpsc::Receiver<()>,
+    }
+
     #[derive(Clone, Copy)]
     enum AncestorReplacement {
         Directory,
@@ -1668,6 +1675,13 @@ mod tests {
     impl SyncHooks for WaitAfterProjectSnapshot {
         fn after_project_snapshot(&mut self) {
             self.barrier.wait();
+        }
+    }
+
+    impl SyncHooks for WaitForPublishedPeer {
+        fn after_project_snapshot(&mut self) {
+            self.barrier.wait();
+            self.published.recv().unwrap();
         }
     }
 
@@ -1952,16 +1966,100 @@ mod tests {
             .map(|handle| handle.join().unwrap())
             .collect::<Vec<_>>();
 
-        assert_eq!(outcomes.iter().filter(|outcome| outcome.is_ok()).count(), 1);
-        assert_eq!(
-            outcomes
-                .iter()
-                .filter(|outcome| matches!(outcome, Err(SyncError::ProjectChanged { .. })))
-                .count(),
-            1
+        let (published, refused): (Vec<_>, Vec<_>) =
+            outcomes.iter().partition(|outcome| outcome.is_ok());
+        assert_eq!(published.len(), 1, "{outcomes:?}");
+        assert_eq!(refused.len(), 1, "{outcomes:?}");
+        // Which refusal the loser earns depends only on how far it had walked
+        // when the publisher took the vector mutation lease, so this asserts
+        // the refusal class instead of a scheduling order the race
+        // deliberately never imposes. Past its own project and vector opens
+        // the loser parks on the lease and the project preconditions refuse
+        // it; short of them the conservative openers refuse the publisher's
+        // live rollback journal or WAL as transient contention. Every member
+        // of the class publishes nothing, which is what exactly-once owes.
+        // `stale_concurrent_first_sync_is_refused_by_the_project_generation_guard`
+        // pins the generation guard itself without depending on scheduling.
+        let error = refused[0].as_ref().unwrap_err();
+        assert!(refuses_a_stale_or_contended_sync(error), "{outcomes:?}");
+        assert_eq!(state(&home, &root).generation, 1);
+        let referenced = project_vector_keys(&home, &root);
+        assert!(
+            !referenced.is_empty(),
+            "the published sync must reference vectors, or the dangling check is vacuous"
+        );
+        let cached = VectorCache::open(&home)
+            .unwrap()
+            .get_many(&referenced)
+            .unwrap();
+        assert_eq!(cached.len(), referenced.len());
+    }
+
+    #[test]
+    fn stale_concurrent_first_sync_is_refused_by_the_project_generation_guard() {
+        let directory = tempdir().unwrap();
+        let root = directory.path().join("orrery");
+        let corpus_path = root.join(".agents/memory");
+        std::fs::create_dir_all(&corpus_path).unwrap();
+        std::fs::write(corpus_path.join("alpha.md"), "alpha original").unwrap();
+        let corpus = Corpus::validated(&corpus_path, CorpusKind::Shared).unwrap();
+        let scan = scan_corpora(&[corpus]);
+        let home = StoreHome::new(directory.path().join("state"));
+        let barrier = Arc::new(Barrier::new(2));
+        let (published_sender, published_receiver) = mpsc::channel();
+
+        let stale_home = home.clone();
+        let stale_root = root.clone();
+        let stale_scan = scan.clone();
+        let stale_barrier = Arc::clone(&barrier);
+        let stale = std::thread::spawn(move || {
+            synchronize_with_hooks(
+                &stale_home,
+                &stale_root,
+                &stale_scan,
+                &mut FakeEmbedder::new(),
+                SyncMode::Incremental,
+                &mut WaitForPublishedPeer {
+                    barrier: stale_barrier,
+                    published: published_receiver,
+                },
+            )
+        });
+
+        // The barrier proves both racers captured the same empty generation-0
+        // project before either published. The stale racer then holds that
+        // snapshot, owning no connection or lease, until publication commits,
+        // so the refusal below is the generation guard and never a conservative
+        // opener refusing a live sidecar.
+        let published = synchronize_with_hooks(
+            &home,
+            &root,
+            &scan,
+            &mut FakeEmbedder::new(),
+            SyncMode::Incremental,
+            &mut WaitAfterProjectSnapshot { barrier },
+        )
+        .unwrap();
+        assert_eq!(published.generation, 1);
+        published_sender.send(()).unwrap();
+
+        let error = stale.join().unwrap().unwrap_err();
+        assert!(
+            matches!(
+                error,
+                SyncError::ProjectChanged {
+                    expected: 0,
+                    actual: 1
+                }
+            ),
+            "{error:?}"
         );
         assert_eq!(state(&home, &root).generation, 1);
         let referenced = project_vector_keys(&home, &root);
+        assert!(
+            !referenced.is_empty(),
+            "the published sync must reference vectors, or the dangling check is vacuous"
+        );
         let cached = VectorCache::open(&home)
             .unwrap()
             .get_many(&referenced)
@@ -2026,6 +2124,20 @@ mod tests {
     fn ancestor_symlink_replacement_is_refused_at_both_revision_checks() {
         assert_ancestor_replacement_is_refused(AncestorReplacement::Symlink, false);
         assert_ancestor_replacement_is_refused(AncestorReplacement::Symlink, true);
+    }
+
+    /// True for every refusal a losing racer can legitimately earn against a
+    /// peer that is publishing the same generation.
+    ///
+    /// The project preconditions report the peer's advanced generation, or its
+    /// stamped embedding scheme when the peer commits between those two reads,
+    /// and the conservative openers report the peer's live SQLite artifacts as
+    /// transient contention. None of them publishes project rows.
+    fn refuses_a_stale_or_contended_sync(error: &SyncError) -> bool {
+        matches!(
+            error,
+            SyncError::ProjectChanged { .. } | SyncError::ProjectSchemeChanged { .. }
+        ) || error.is_transient_contention()
     }
 
     fn project_vector_keys(home: &StoreHome, root: &Path) -> BTreeSet<VectorKey> {
