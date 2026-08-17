@@ -1,0 +1,27 @@
+[package]
+name = "yams-embed"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[features]
+test-support = []
+
+[lints]
+workspace = true
+
+[dependencies]
+fastembed.workspace = true
+hf-hub.workspace = true
+rustix.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+# Self-dependency so this crate's own integration tests (crates/yams-embed/tests/)
+# can reach the test-support-gated seams, matching how sibling crates enable them.
+yams-embed = { path = ".", features = ["test-support"] }
+tempfile.workspace = true

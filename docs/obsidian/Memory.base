@@ -1,0 +1,15 @@
+filters:
+  and:
+    - 'file.folder == "pages"'
+views:
+  - type: table
+    name: Memories
+    order:
+      - file.name
+      - title
+      - type
+      - status
+      - owner
+      - updated
+      - verified
+      - summary

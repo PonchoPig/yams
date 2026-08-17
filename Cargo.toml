@@ -1,0 +1,50 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/yams-cli",
+    "crates/yams-core",
+    "crates/yams-embed",
+    "crates/yams-fs",
+    "crates/yams-protocol",
+    "crates/yams-runtime",
+    "crates/yams-service",
+    "crates/yams-store",
+    "crates/yams-wiki",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/PonchoPig/yams"
+
+[workspace.dependencies]
+assert_cmd = "2.2.2"
+clap = { version = "4.6.6", features = ["derive"] }
+fastembed = { version = "=5.17.4", default-features = false, features = [
+    "hf-hub-rustls-tls",
+    "ort-download-binaries-rustls-tls",
+] }
+hf-hub = { version = "=0.5.0", default-features = false }
+getrandom = "0.4.3"
+predicates = "3.1.3"
+regex = "1.11.3"
+rusqlite = { version = "0.40.1", default-features = false, features = ["bundled-full"] }
+rustix = { version = "1.1.4", features = ["event", "fs", "net", "pipe", "process"] }
+nix = { version = "0.31.3", features = ["socket", "user"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.149"
+sha2 = "0.10.9"
+tempfile = "3.27.0"
+thiserror = "2.0.18"
+unicode-casefold = "=0.2.0"
+unicode-general-category = "=0.6.0"
+unicode-normalization = "=0.1.22"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[profile.release]
+lto = "thin"
+strip = "symbols"

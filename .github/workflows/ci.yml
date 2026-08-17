@@ -1,0 +1,141 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    runs-on: macos-14
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: workspace
+      - name: Audit Yams brand
+        run: ./scripts/test-yams-brand.sh
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Lint all targets
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Test workspace
+        run: cargo test --workspace --all-features --locked
+      - name: Build release workspace
+        run: cargo build --workspace --all-features --release --locked
+      - name: Check documentation
+        run: RUSTDOCFLAGS='-D warnings' cargo doc --workspace --all-features --no-deps --locked
+      - name: Whitespace check over the change range
+        if: github.event_name == 'pull_request' || github.event.deleted == false
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          PUSH_REF: ${{ github.ref }}
+          DEFAULT_REF: refs/heads/${{ github.event.repository.default_branch }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GIT_TERMINAL_PROMPT: 0
+        run: |
+          set -euo pipefail
+
+          EMPTY_TREE="$(git hash-object -t tree /dev/null)"
+
+          # Prefer the default-branch merge base; disconnected histories use
+          # the empty tree so every file introduced by the push is checked.
+          fallback_base() {
+            local default_ref="refs/remotes/origin/$DEFAULT_BRANCH"
+            local merge_base
+
+            if git cat-file -e "$default_ref^{commit}" 2>/dev/null &&
+              merge_base="$(git merge-base HEAD "$default_ref")"; then
+              printf '%s\n' "$merge_base"
+            else
+              printf '%s\n' "$EMPTY_TREE"
+            fi
+          }
+
+          push_fallback_base() {
+            # Checkout moves origin/default to HEAD. When the unavailable base
+            # belongs to that branch, its merge base would check an empty range.
+            if [[ "$PUSH_REF" == "$DEFAULT_REF" ]]; then
+              printf '%s\n' "$EMPTY_TREE"
+            else
+              fallback_base
+            fi
+          }
+
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            BASE="$PR_BASE_SHA"
+            git cat-file -e "$BASE^{commit}"
+          elif [[ "$PUSH_BEFORE_SHA" == "0000000000000000000000000000000000000000" ]]; then
+            BASE="$(push_fallback_base)"
+          else
+            BASE="$PUSH_BEFORE_SHA"
+            if ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+              # Full fetches omit dangling force-push tips; try the exact object once.
+              git fetch --no-tags --depth=1 origin "$BASE" || true
+            fi
+            if ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+              BASE="$(push_fallback_base)"
+            fi
+          fi
+
+          if [[ "$BASE" == "$EMPTY_TREE" ]]; then
+            git cat-file -e "$BASE^{tree}"
+          else
+            git cat-file -e "$BASE^{commit}"
+          fi
+          git diff --check "$BASE"..HEAD
+
+  byte_exact_unix_paths:
+    name: Linux path and wiki init
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: linux-path
+      - name: Test byte-exact Unix path management
+        run: cargo test -p yams-store --test management --all-features --locked
+      - name: Test wiki init on Linux /tmp
+        run: cargo test -p yams-wiki --all-features --locked
+
+  release_artifact_smoke:
+    name: Staged release artifact smoke
+    runs-on: macos-14
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          shared-key: release-smoke
+      - name: Test staged release artifacts
+        run: |
+          ./scripts/test-rust-release-contract.sh
+          ./scripts/test-rust-release.sh

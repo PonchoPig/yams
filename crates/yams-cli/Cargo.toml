@@ -1,0 +1,42 @@
+[package]
+name = "yams-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+autobins = false
+
+[lints]
+workspace = true
+
+[dependencies]
+clap.workspace = true
+chrono = "0.4.45"
+yams-core = { path = "../yams-core" }
+yams-protocol = { path = "../yams-protocol" }
+yams-embed = { path = "../yams-embed" }
+yams-store = { path = "../yams-store" }
+yams-wiki = { path = "../yams-wiki" }
+rustix.workspace = true
+ryu = "=1.0.23"
+rusqlite.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+unicode-general-category.workspace = true
+
+[features]
+test-support = ["yams-embed/test-support"]
+
+[dev-dependencies]
+assert_cmd.workspace = true
+tempfile.workspace = true
+
+[[bin]]
+name = "yams"
+path = "src/main.rs"
+
+[[bin]]
+name = "memory-search"
+path = "src/bin/memory-search.rs"
