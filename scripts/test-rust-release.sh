@@ -399,7 +399,7 @@ if [ "${YAMS_RELEASE_TEST_ALLOW_NET:-0}" = 1 ]; then
     env HOME="$TEST_ROOT/home" TMPDIR="$TEMPORARY_DIRECTORY" \
     YAMS_HOME="$STATE" YAMS_DIRS="$CORPUS" YAMS_NO_SERVICE=1 \
     "$YAMS" --json --no-gate --project "$PROJECT" 'violet beacon'
-  require_output "$COMMAND_STDOUT" '"name": "alpha"' 'offline direct release query'
+  require_output "$COMMAND_STDOUT" '"name": "Alpha beacon"' 'offline direct release query'
 
   env HOME="$TEST_ROOT/home" TMPDIR="$TEMPORARY_DIRECTORY" \
     YAMS_HOME="$STATE" YAMS_DIRS="$CORPUS" \
@@ -412,7 +412,7 @@ if [ "${YAMS_RELEASE_TEST_ALLOW_NET:-0}" = 1 ]; then
     env HOME="$TEST_ROOT/home" TMPDIR="$TEMPORARY_DIRECTORY" \
     YAMS_SERVICE_SOCKET="$SERVICE_SOCKET" \
     "$YAMS" --json --no-gate --project "$PROJECT" 'violet beacon'
-  require_output "$COMMAND_STDOUT" '"name": "alpha"' 'service-backed release query'
+  require_output "$COMMAND_STDOUT" '"name": "Alpha beacon"' 'service-backed release query'
 
   wait_for_service_exit
   [ ! -e "$SERVICE_SOCKET" ] || fail 'yams-service left its socket behind after shutdown'
