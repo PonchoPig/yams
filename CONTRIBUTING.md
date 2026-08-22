@@ -33,3 +33,7 @@ Project memory policy that `yams-wiki init` installs; do not add other agent
 instructions to it or commit agent instructions elsewhere. Add focused tests
 beside the crate that owns the behavior and preserve stable output and exit
 contracts.
+
+Record user-facing changes under the `[Unreleased]` heading in
+`CHANGELOG.md` as part of the change that introduces them. The release
+operator promotes that section to a version entry when cutting a release.

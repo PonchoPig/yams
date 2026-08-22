@@ -39,7 +39,11 @@ checkout, and steps 8-9 on the target machine.
 2. **Write the release notes** from `docs/release/notes-template.md` to
    `docs/release/notes/vX.Y.Z.md` (`mkdir -p docs/release/notes` on first
    use), filling every field (commit sha, macOS version, rustc version,
-   `Cargo.lock` sha). Commit them.
+   `Cargo.lock` sha). Then promote the `[Unreleased]` section of
+   `CHANGELOG.md` to `[X.Y.Z] — <date>`: link the entry heading to the
+   release tag and its first line to the new notes file, add the
+   reference link at the bottom, and start a fresh empty `[Unreleased]`
+   section. Commit the notes and the changelog together.
 
 3. **AUTHORIZATION — go public.** First release only: make
    `github.com/PonchoPig/yams` public and enable GitHub private
