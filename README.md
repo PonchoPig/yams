@@ -165,12 +165,22 @@ yams --index
                                   # download (~550 MB), if not cached
 ```
 
-**Search:**
+**Search.** Every result names its source page and score, and a query
+that nothing answers well gets silence instead of noise (here against
+the example page from [the memory format](#the-memory-format) below):
 
-```sh
-yams "how do we handle schema migrations"
-yams --json -k 5 "release process"        # machine output
+```console
+$ yams "why is night mode behind a flag"
+Night mode rollout  (0.7841)
+  ~/observatory/.agents/memory/pages/night-mode-rollout.md
+  Night mode ships behind the `beacon` flag until the lantern console
+  supports it natively. **Why:** The console renders the classic palette...
+
+$ yams "recipe for banana bread"
+no results
 ```
+
+Add `--json -k 5` for machine-readable results (what agents use).
 
 **Everyday commands:**
 
